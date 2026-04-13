@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import connectDB from './src/config/db.config.js';
 import userRoutes from './src/routes/user.routes.js';
+import postRoutes from './src/routes/post.routes.js';
 
 dotenv.config();
 const app = express();
@@ -19,6 +20,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/api/users', userRoutes);
+app.use('/api/posts', postRoutes);
 
 app.get('/health', (req, res) => {
     res.status(200).json({message : "BlogPulse server is running smoothly"})
