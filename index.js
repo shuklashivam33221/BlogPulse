@@ -4,6 +4,7 @@ import cors from "cors";
 import connectDB from './src/config/db.config.js';
 import userRoutes from './src/routes/user.routes.js';
 import postRoutes from './src/routes/post.routes.js';
+import commentRoutes from './src/routes/comment.routes.js';
 
 dotenv.config();
 const app = express();

@@ -11,7 +11,7 @@ const router = express.Router();
 // POST /api/users/register → calls registerUser controller
 router.post('/register',
     [
-        body('name').trim().notEmpty().withMessage('Please provide a valid email'),
+        body('name').trim().notEmpty().withMessage('Please provide name'),
         body('email').trim().isEmail().withMessage('Please provide a valid email'),
         body('password').isLength({min:6}).withMessage('Password must be atleast 6 characters'),
     ],
