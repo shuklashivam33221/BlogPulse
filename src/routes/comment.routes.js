@@ -1,19 +1,25 @@
 import express from 'express';
-import { addComment, getCommentByPost, deleteComment} from '../controllers/comment.controller.js';
+import { addComment, getCommentsByPost, deleteComment } from '../controllers/comment.controller.js';
 import { body } from 'express-validator';
 import protectRoute from '../middleware/auth.middleware.js';
-import {validate} from '../middleware/validate.middleware.js';
-import {protectRoute} from '../middleware/auth.middleware.js';
+import validate from '../middleware/validate.middleware.js';
 
 const router = express.Router();
 
-// validation required for adding comment and if the user is logged in then he can comment so we put protectRoute first 
-router.get('/:postId',
+// PUBLIC — anyone can read comments on a post
+router.get('/:postId', getCommentsByPost);
+
+// PROTECTED — must be logged in to add a comment
+router.post('/:postId',
     protectRoute,
     [
-        body('content').trim().notEmpty().withMessage('Comments can not be empty')
+        body('content').trim().notEmpty().withMessage('Comment cannot be empty')
     ],
     validate,
     addComment
- );
+);
 
+// PROTECTED — only the comment author can delete it
+router.delete('/:commentId', protectRoute, deleteComment);
+
+export default router;

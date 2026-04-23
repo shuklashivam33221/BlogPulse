@@ -22,6 +22,7 @@ app.use(express.json());
 
 app.use('/api/users', userRoutes);
 app.use('/api/posts', postRoutes);
+app.use('/api/comments', commentRoutes);
 
 app.get('/health', (req, res) => {
     res.status(200).json({message : "BlogPulse server is running smoothly"})
