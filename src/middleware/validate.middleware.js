@@ -8,7 +8,7 @@ import { validationResult } from "express-validator";
 const validate = (req, res, next) => {
     const errors = validationResult(req);
 
-    // errors.isEmpty() = true there are no errors empty , 
+    // errors.isEmpty() = true ,there are no errors empty , 
     if(!errors.isEmpty()){
         return res.status(400).json({
             message : "Validation failed",

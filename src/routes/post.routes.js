@@ -1,5 +1,5 @@
 import express from "express";
-import { body } from "express-validator";
+import { body, param } from "express-validator";
 import { createPost, getAllPosts, getPostById, updatePost, deletePost } from "../controllers/post.controller.js";
 import protectRoute from "../middleware/auth.middleware.js";
 import validate from "../middleware/validate.middleware.js";
@@ -8,7 +8,12 @@ const router = express.Router();
 
 // PUBLIC routes (no token needed)
 router.get("/", getAllPosts);
-router.get("/:id", getPostById);
+router.get("/:id",
+    [param('id').isMongoId().withMessage('Invalid post ID format')],
+    validate,
+    getPostById
+);
+
 
 // PROTECTED routes (token required)
 router.post("/",
@@ -21,7 +26,23 @@ router.post("/",
     createPost
 );
 
-router.put("/:id", protectRoute, updatePost);
-router.delete("/:id", protectRoute, deletePost);
+router.put("/:id",
+    protectRoute,
+    [
+        param('id').isMongoId().withMessage('Invalid post ID format'),
+        body('title').optional().trim().notEmpty().withMessage('Title cannot be empty'),
+        body('content').optional().trim().notEmpty().withMessage('Content cannot be empty'),
+    ],
+    validate,
+    updatePost
+);
+
+router.delete("/:id",
+    protectRoute,
+    [param('id').isMongoId().withMessage('Invalid post ID format')],
+    validate,
+    deletePost
+);
+
 
 export default router;

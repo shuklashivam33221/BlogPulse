@@ -3,7 +3,7 @@ import User from "../models/user.model.js";
 
 // This middleware sits BETWEEN the route and the controller
 // It checks if the user has a valid JWT token before letting them access protected routes
-//
+
 // FLOW:
 // Request comes in → auth middleware intercepts → checks token → if valid, attaches user to req.user → controller runs
 // If token is missing or invalid → immediately returns 401 and controller NEVER runs
@@ -52,7 +52,7 @@ const protectRoute = async (req, res, next) => {
 catch(error) {
     console.error("Error in auth middleware:", error.message);
 
-    res.status(401).json({message : "TOken is invalid or expired"});
+    res.status(401).json({message : "Token is invalid or expired"});
 }
 };
 
