@@ -23,7 +23,11 @@ const postSchema = mongoose.Schema({
         type : [String], // an array of string like ["Tech", "Coding", Nodejs]
 
         default : [],
-    }
+    }, 
+    likes :[{
+        type : mongoose.Schema.Types.ObjectId,
+        ref : "User"
+    }]
 },
 {
         timestamps : true,

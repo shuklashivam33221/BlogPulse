@@ -43,12 +43,62 @@ export const getAllPosts = async (req, res) => {
         // with the actual user's name, email, and bio
         // .sort({ createdAt: -1 }) puts newest posts first
 
-        const posts = await Post.find().populate("author", "name email bio").sort({createdAt : -1});
+        // ==================== GET ALL POSTS ====================
+        // PUBLIC — anyone can read blog posts
+        // Supports: ?search=keyword  ?tag=Tech  ?page=2  ?limit=5
+        
+        const filter = {};
+        // An empty object {} in MongoDB means "match everything." If we don't add anything to this object, MongoDB will return every single post. 
+
+        if(req.query.serach){
+            filter.$or = [
+                {
+                    title : {$regex : req.query.serach, $options: "i"}
+                },
+                {
+                    content : {$regex : req.query.serach, $options:"i"}
+                }
+            ]
+        }
+        // req.query.search checks if the user typed ?search=something in the URL.
+        // If they did, we add an $or array to our filter object.
+        // $or tells MongoDB: "Find posts where CONDITION A or CONDITION B is true."
+        // $regex: req.query.search means "search for this exact text inside the string".
+        // $options: "i" means "case-insensitive" (so "react" matches "React" and "REACT").
+
+        if(req.query.tag){
+            filter.tags = {$in : [req.query.tag]};
+        }
+
+        //Checks if ?tag=Backend is in the URL.
+        // filter.tags = { $in: [...] } tells MongoDB: "Look at the tags array in the database. Return this post only if that array contains the value we provided." If it wasn't there: Users couldn't click on a "Backend" tag to see only backend-related posts.
+
+        // The Pagination Math
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        // parseInt: Query parameters from URLs always come in as strings (e.g., "2"). parseInt turns "2" into a math number 2.
+        // || 1 (Logical OR): This is a fallback. If the user doesn't provide ?page=..., req.query.page is undefined. parseInt(undefined) is NaN (Not a Number). If the left side is NaN, it defaults to 1 (Page 1).
+        // skip Math: If you want page 3, and limit is 10 per page. (3 - 1) * 10 = 20. This tells the database to "skip the first 20 posts and give me the next 10."
+
+        const total = await parseInt.find(filter);
+        // Asks the database, "How many posts match this filter exactly?" How it works: MongoDB counts the matches without actually downloading the post data. This is extremely fast. If it wasn't there: The frontend wouldn't know how many pages exist. It wouldn't be able to render buttons like [Page 1] [Page 2] [Page 3] [Next >].
+
+        const posts = await Post.find(filter)
+        .populate("author", "name email bio")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit);
 
         res.status(200).json({
-            count : posts.length,
-            posts
-        });
+        count: posts.length,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+        posts
+    });
+
     } catch(error){
         console.error("Error in getAllPosts:", error.message);
         res.status(500).json({ message: "Internal Server Error" });
@@ -150,3 +200,131 @@ export const deletePost = async (req, res) => {
     }
 };
 
+
+// ==================== LIKE / UNLIKE A POST ====================
+// PROTECTED — must be logged in to like
+// Toggle behavior: if already liked → unlike, if not liked → like
+export const toggleLike = async (req, res) => {
+    try{
+        const post = await Post.findById(req.params.id);
+
+        if(!post) 
+        {
+            return res.status(404).json({
+                message : "Post not found"
+            })
+        }
+
+        const userId = req.user._id.toString();
+
+        // Check if this user already liked this post
+        //.some() loops through the array and returns true if any element passes the test
+
+        // 3. Why we use .some() instead of .includes()
+        // This is directly related to the .toString() problem above!
+
+        // .includes() is a great JavaScript feature. It looks at an array and says, "Is this exact value in here?" Behind the scenes, it uses === to check.
+
+        // If our likes array was just an array of plain strings ["userId1", "userId2"], we could easily use .includes("userId1").
+
+        // But our likes array is an array of MongoDB ObjectIds: [ObjectId("..."), ObjectId("...")].
+
+        // If we tried to do this:
+
+        // javascript
+        // post.likes.includes(req.user._id)
+        // It would return false every time, because includes() is trying to compare Objects in memory using === and failing.
+
+        // Why .some() is the fix: .some() is more powerful. Instead of just searching for an exact value, it lets us write a custom "test" function. It loops through the array, and we can convert the ID to a string inside the loop before checking it:
+
+        // javascript
+        // // Loop through every 'id' in the array
+        // post.likes.some((id) => {
+        //     // Convert it to a string, THEN check if it matches
+        //     return id.toString() === userId; 
+        // });
+
+        const alreadyLiked = post.likes.some((id) => id.toString() === userId);
+
+        if(alreadyLiked) {
+            // UNLIKE — remove user's ID from the likes array
+            // .filter dont remove the element directly but it creates a brand new array and stores the element other than id which likes it for example initally person with id 1, 2, 3, 4 liked the post but now 2 wants to dislike it so how id.toString !== userId means other than 2!=2 ie 1, 3, 4 will be stored in the other one
+
+            post.likes = post.likes.filter(
+                (id) => id.toString() !== userId
+            );
+        }
+        else {
+            // LIKE — add user's ID to the likes array
+            post.likes.push(req.user._id);
+        }
+
+        await post.save();
+        res.status(200).json({
+            message: alreadyLiked ? "Post unliked" : "Post liked",
+            likesCount: post.likes.length,
+        });
+    }
+    catch(error) {
+        console.error("Error in toggleLike", error.message);
+        res.status(500).json({
+            message : "Internal Server Error"
+        })
+    }
+}
+
+// ==================== GET BLOG ANALYTICS (AGGREGATION PIPELINE) ====================
+// PUBLIC — anyone can see the stats
+// Uses MongoDB Aggregation to process data on the database level
+
+// ==================== GET BLOG ANALYTICS (AGGREGATION PIPELINE) ====================
+// PUBLIC — anyone can see the stats
+// Uses MongoDB Aggregation to process data on the database level
+
+export const getPostAnalytics = async (req, res) => {
+    try {
+        // We pass an array of "stages" to the aggregate function
+        // Each stage takes the output of the previous stage and processes it
+        const stats = await Post.aggregate([
+            {
+                // Stage 1: Group EVERYTHING together (id: null)
+                $group: {
+                    _id: null,
+                    totalPosts: { $sum: 1 }, // Count every document
+                    // Calculate total likes by measuring the size of the likes array
+                    totalLikes: { $sum: { $size: "$likes" } } 
+                }
+            },
+            {
+                // Stage 2: Clean up the output, hide the _id field
+                $project: {
+                    _id: 0,
+                    totalPosts: 1,
+                    totalLikes: 1
+                }
+            }
+        ]);
+
+        // Tag Analytics: Find the most used tags
+        const tagStats = await Post.aggregate([
+            { $unwind: "$tags" }, // Deconstruct the tags array (1 post with 3 tags becomes 3 separate items)
+            {
+                $group: {
+                    _id: "$tags", // Group by the tag name
+                    count: { $sum: 1 } // Count how many times it appears
+                }
+            },
+            { $sort: { count: -1 } }, // Sort by most popular first
+            { $limit: 5 } // Only get the top 5
+        ]);
+
+        res.status(200).json({
+            // aggregate always returns an array. If no posts exist, default to 0
+            generalStats: stats.length > 0 ? stats[0] : { totalPosts: 0, totalLikes: 0 },
+            popularTags: tagStats
+        });
+    } catch (error) {
+        console.error("Error in getPostAnalytics:", error.message);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
