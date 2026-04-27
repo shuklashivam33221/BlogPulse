@@ -11,7 +11,10 @@ const postSchema = mongoose.Schema({
         type : String,
         required : true
     },
-
+    coverImage : {
+        type : String, // We just store the URL string
+        default : ""
+    },
     // okay how we link a post to a specific user 
     author : {
         type : mongoose.Schema.Types.ObjectId, // this specifically stores a mongoDb id

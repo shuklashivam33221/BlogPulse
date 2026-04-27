@@ -12,12 +12,18 @@ export const createPost = async (req, res) => {
             return res.status(401).json({messgage : "Title and content are requird "});
         }
 
+        // If an image was uploaded, Multer puts its info in req.file
+        // req.file.path contains the secure Cloudinary URL
+
+        const imageUrl = req.file ? req.file.path : "";
+
         // req.user._id comes from the auth middleware (the JWT wristband!)
         // We automatically set the author to whoever is logged in
 
         const newPost = await Post.create({
             title, 
             content,
+            coverImage : imageUrl, // Save the URL to DB
             author : req.user._id, // The logged in user is automatically the author 
             tags : tags || [],
         });

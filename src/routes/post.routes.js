@@ -3,6 +3,7 @@ import { body, param } from "express-validator";
 import { createPost, getAllPosts, getPostById, updatePost, deletePost, toggleLike, getPostAnalytics } from "../controllers/post.controller.js";
 import protectRoute from "../middleware/auth.middleware.js";
 import validate from "../middleware/validate.middleware.js";
+import upload from "../middleware/upload.middleware.js";
 
 const router = express.Router();
 
@@ -21,8 +22,11 @@ router.get("/:id",
 
 
 // PROTECTED routes (token required)
+// We must put upload.single('coverImage') before the body validation, because standard body validation can't read multipart/form-data properly without Multer processing it first:
+
 router.post("/",
     protectRoute,
+    upload.single("coverImage"), // "coverImage" is the field name the frontend must use
     [
         body('title').trim().notEmpty().withMessage('Title is required'),
         body('content').trim().notEmpty().withMessage('Content is required'),
