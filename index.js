@@ -61,7 +61,7 @@ const swaggerOptions = {
             }
         }
     },
-    
+
     // This tells Swagger where to look for your API documentation comments
     // This is the most important part!
     // It tells the scanner: "Go look inside the src/routes folder. Scan every .js file and look for my special YAML comments."
@@ -82,9 +82,9 @@ app.get('/health', (req, res) => {
 })
 app.get('/', (req, res) => {
     // res.send(req.url);
-    res.json({ "name": "Shivam" })
+    res.redirect('/api-docs');
     // res.send(req.url) // two responses can not be sent by one get method 
-})
+});
 
 app.use(errorHandler);
 app.listen(process.env.PORT, () => {
