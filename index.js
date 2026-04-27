@@ -14,7 +14,10 @@ import swaggerUi from 'swagger-ui-express';
 dotenv.config();
 const app = express();
 
-connectDB();
+// Only connect to MongoDB if we are not running tests
+if (process.env.NODE_ENV !== 'test') {
+    connectDB();
+}
 
 const corsOptions = {
     origin: 'http:localhost:5000',
