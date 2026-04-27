@@ -1,0 +1,29 @@
+name: Node.js CI
+
+# This triggers the robot to run whenever you push code to the master branch
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    # This tells GitHub to spin up a virtual Ubuntu Linux machine
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Download your code from the repository
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    # Step 2: Install Node.js on the virtual machine
+    - name: Use Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20.x' # We use a stable version of Node
+        
+    # Step 3: Install all your packages (Express, Mongoose, etc.)
+    # If package.json is broken, the CI pipeline will fail and alert you!
+    - name: Install dependencies
+      run: npm install
