@@ -87,6 +87,13 @@ app.get('/', (req, res) => {
 });
 
 app.use(errorHandler);
-app.listen(process.env.PORT, () => {
-    console.log("Hey i am listening");
-})
+
+// Only listen if we are not running a test
+if (process.env.NODE_ENV !== 'test') {
+    app.listen(process.env.PORT || 5000, () => {
+        console.log("Hey i am listening");
+    });
+}
+
+// Export the app so Supertest can use it
+export default app;

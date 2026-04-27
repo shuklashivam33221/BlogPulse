@@ -24,6 +24,10 @@ jobs:
         node-version: '20.x' # We use a stable version of Node
         
     # Step 3: Install all your packages (Express, Mongoose, etc.)
-    # If package.json is broken, the CI pipeline will fail and alert you!
     - name: Install dependencies
       run: npm install
+
+    # Step 4: Run Automated Tests
+    # If ANY test fails, GitHub will immediately abort the deployment and alert you!
+    - name: Run Tests
+      run: npm test
