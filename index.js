@@ -37,7 +37,8 @@ const limiter = rateLimit({
     message: { message: "Too many requests from this IP, please try again after 15 minutes" }
 });
 // Apply rate limiter to all routes
-app.use("/api", limiter);
+// TEMPORARILY DISABLED FOR LOAD TESTING
+// app.use("/api", limiter);
 
 // ==================== SWAGGER DOCUMENTATION SETUP ====================
 const swaggerOptions = {

@@ -1,4 +1,18 @@
+import { response } from "express";
 import { Post } from "../models/post.model.js";
+import { createClient } from 'redis';
+
+// 2. Connect to the Upstash Redis Database
+let redisClient;
+if(process.env.REDIS_URI){
+    redisClient = createClient({ url : process.env.REDIS_URI });
+
+    redisClient.on('error', (err) => console.log('❌ Redis Client Error:', err));
+
+    redisClient.connect()
+    .then(() => console.log("✅ Connected to Upstash Redis!"))
+    .catch(console.error);
+}
 
 // ==================== CREATE A NEW POST ====================
 // PROTECTED — only logged-in users can create posts
@@ -45,6 +59,40 @@ export const createPost = async (req, res) => {
 export const getAllPosts = async (req, res) => {
     try{
 
+        // We grab all the query parameters first
+        const page  = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const search = req.query.search || "";
+        const tag = req.query.tag || "";
+
+        // ==========================================
+        // REDIS STEP 1: Create a unique "Cache Key"
+        // Every unique search needs its own unique save slot in Redis!
+        // ==========================================
+
+
+        const cacheKey = `posts:page=${limit} : search=${search}:tag=${tag}`;
+
+        // ==========================================
+        // REDIS STEP 2: The "Cache Hit" Scenario
+        // Check if Redis already has this exact data in RAM
+        // ==========================================
+        if(redisClient){ 
+            const cachedData = await redisClient.get(cacheKey);
+            if(cachedData) {
+                conslole.log("Cache hit : Serving from redis RAM!!");
+                // Data comes out of Redis as a String, so we parse it back to JSON
+                return res.status(200).json(JSON.parse(cachedData)); 
+            }
+        }
+
+         // ==========================================
+        // REDIS STEP 3: The "Cache Miss" Scenario
+        // If we get here, Redis didn't have it. We MUST ask MongoDB.
+        // ==========================================
+        console.log("🐢 CACHE MISS: Serving from MongoDB...");
+
+
         // .populate('author', 'name email bio') replaces the author ID
         // with the actual user's name, email, and bio
         // .sort({ createdAt: -1 }) puts newest posts first
@@ -80,15 +128,14 @@ export const getAllPosts = async (req, res) => {
         // filter.tags = { $in: [...] } tells MongoDB: "Look at the tags array in the database. Return this post only if that array contains the value we provided." If it wasn't there: Users couldn't click on a "Backend" tag to see only backend-related posts.
 
         // The Pagination Math
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
+        
         const skip = (page - 1) * limit;
 
         // parseInt: Query parameters from URLs always come in as strings (e.g., "2"). parseInt turns "2" into a math number 2.
         // || 1 (Logical OR): This is a fallback. If the user doesn't provide ?page=..., req.query.page is undefined. parseInt(undefined) is NaN (Not a Number). If the left side is NaN, it defaults to 1 (Page 1).
         // skip Math: If you want page 3, and limit is 10 per page. (3 - 1) * 10 = 20. This tells the database to "skip the first 20 posts and give me the next 10."
 
-        const total = await parseInt.find(filter);
+        const total = await Post.countDocuments(filter);
         // Asks the database, "How many posts match this filter exactly?" How it works: MongoDB counts the matches without actually downloading the post data. This is extremely fast. If it wasn't there: The frontend wouldn't know how many pages exist. It wouldn't be able to render buttons like [Page 1] [Page 2] [Page 3] [Next >].
 
         const posts = await Post.find(filter)
@@ -97,14 +144,25 @@ export const getAllPosts = async (req, res) => {
         .skip(skip)
         .limit(limit);
 
-        res.status(200).json({
+        const responseData = {
         count: posts.length,
         total,
         page,
         totalPages: Math.ceil(total / limit),
         posts
-    });
+    }
 
+    // ==========================================
+    // REDIS STEP 4: Save to Redis for next time!
+    // We save the responseData into Redis and tell it to expire after 5 minutes (300 seconds)
+    // ==========================================
+    if(redisClient){
+        // .setEx(key, time, value): This stands for "Set with Expiration". It tells Redis: "Save this data under this key, but automatically delete it from your memory after 300 seconds (5 minutes)."
+        await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
+    }
+    // Finally, send the data to the user
+    res.status(200).json(responseData);
+        
     } catch(error){
         console.error("Error in getAllPosts:", error.message);
         res.status(500).json({ message: "Internal Server Error" });
