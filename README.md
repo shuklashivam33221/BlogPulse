@@ -1,156 +1,229 @@
-# 📝 BlogPulse — RESTful Blog Platform API
+# BlogPulse — RESTful Blog Platform API
 
-A secure, scalable RESTful API for a blog platform built with **Node.js**, **Express 5**, and **MongoDB**. Features JWT-based authentication, role-aware authorization, full CRUD operations for posts and comments, and request validation middleware.
+A backend API for a blog platform built with Node.js, Express 5, and MongoDB. Designed with a strict MVC architecture, JWT authentication, and layered middleware for validation, error handling, and security hardening.
 
-> **Live Repo:** [github.com/shuklashivam33221/BlogPulse](https://github.com/shuklashivam33221/BlogPulse)
-
----
-
-## 🚀 Features
-
-- **User Authentication** — Secure signup/login with bcrypt password hashing and JWT token-based sessions
-- **Authorization Middleware** — Route-level protection ensuring only authenticated users can create, edit, or delete resources
-- **Blog Post CRUD** — Create, read, update, and delete blog posts with author ownership validation
-- **Comment System** — Nested comment support tied to posts and users with full CRUD operations
-- **Input Validation** — Request body/param validation using `express-validator` to prevent malformed data
-- **Modular Architecture** — Clean separation of concerns with dedicated routes, controllers, models, middleware, and config layers
-- **CORS Configuration** — Configurable cross-origin resource sharing for frontend integration
-- **Health Check Endpoint** — `/health` endpoint for monitoring server uptime
+> **Live API:** [blogpulse-4jc9.onrender.com](https://blogpulse-4jc9.onrender.com)  
+> **API Docs:** [Swagger UI](https://blogpulse-4jc9.onrender.com/api-docs)
 
 ---
 
-## 🛠️ Tech Stack
+## Architecture Decisions
 
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js (ES Modules) |
-| Framework | Express 5 |
-| Database | MongoDB + Mongoose ODM |
-| Authentication | JSON Web Tokens (JWT) |
-| Password Security | bcryptjs |
-| Validation | express-validator |
-| Dev Tools | Nodemon, dotenv |
+### Why Stateless JWT Over Session-Based Auth
+Sessions require server-side storage — either in memory (lost on restart) or in a store like Redis. JWT is self-contained: the token carries the user identity, so the server doesn't need to store session state. This means any instance of the API can verify a request independently, which simplifies deployment on stateless platforms like Render.
+
+**Trade-off accepted:** JWTs can't be invalidated before expiry. If a token is compromised, it's valid until it expires. Mitigated by keeping token expiry short.
+
+### Why MVC With Separate Validation Middleware
+Early versions had validation logic inside controllers. This worked but made controllers long and mixed two concerns: "is this input valid?" and "what should I do with it?" Extracting validation into dedicated middleware (`express-validator` chains in route files + `validate.middleware.js`) keeps each layer focused on one job.
+
+### Why Multer Runs Before express-validator
+`express.json()` can't parse `multipart/form-data`. When a post includes a cover image, the request body is multipart — so `express-validator` sees an empty `req.body` and rejects the request. Multer must run first to parse the multipart data and populate `req.body`, then validation can run on the populated fields.
+
+This was a bug that took time to diagnose. The fix is middleware ordering: `protectRoute → upload.single() → [validators] → validate → controller`.
+
+### Why Controller-Level Ownership Checks (Not Middleware)
+Initially tried to verify resource ownership (e.g., "does this user own this post?") in middleware. The problem: middleware runs before the controller, and checking ownership requires fetching the resource from the database — the same fetch the controller would do. This meant either:
+- Fetching the resource twice (once in middleware, once in controller), or
+- Passing data between middleware and controller via `req.resource` (messy coupling)
+
+Moved ownership checks into controllers where the resource is already fetched. Simpler, one DB call.
 
 ---
 
-## 📁 Project Structure
+## What Broke During Development
+
+### The ObjectId Comparison Bug
+**Problem:** The `toggleLike` endpoint uses an array of user IDs on each post. Checking if a user already liked a post with `likes.includes(userId)` always returned `false` — even when the user ID was clearly in the array.
+
+**Cause:** Mongoose ObjectIds are objects, not strings. JavaScript `===` compares object references, not values. Two different ObjectId objects pointing to the same ID are not "equal" by reference.
+
+**Fix:** Used `.some(id => id.toString() === userId.toString())` for comparison and `.filter()` for removal instead of `.pull()` or `.splice()`.
+
+### Route Ordering: `/analytics` vs `/:id`
+**Problem:** `GET /api/posts/analytics` returned "Invalid post ID format" — the param validator was rejecting "analytics" as an invalid MongoDB ObjectId.
+
+**Cause:** Express matches routes top-to-bottom. The `/:id` route was defined before `/analytics`, so Express treated "analytics" as an `:id` parameter.
+
+**Fix:** Moved static routes (`/analytics`) above parameterized routes (`/:id`). Route ordering in Express is execution order.
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| Runtime | Node.js (ES Modules) | Server-side JavaScript |
+| Framework | Express 5 | HTTP routing and middleware |
+| Database | MongoDB + Mongoose | Document storage and ODM |
+| Auth | jsonwebtoken + bcryptjs | Token generation and password hashing |
+| Validation | express-validator | Request body/param validation |
+| File Uploads | Multer + Cloudinary | Image processing and cloud storage |
+| Security | Helmet + express-rate-limit | HTTP header hardening, brute-force protection |
+| Documentation | swagger-jsdoc + swagger-ui-express | Interactive API documentation |
+| Testing | Jest + Supertest | Integration tests |
+
+---
+
+## API Endpoints
+
+### Users — `/api/users`
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/register` | Register new user | No |
+| POST | `/login` | Login, returns JWT | No |
+| GET | `/profile` | Get current user profile | Yes |
+| PUT | `/profile` | Update profile | Yes |
+| DELETE | `/profile` | Delete account | Yes |
+
+### Posts — `/api/posts`
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/` | List all posts (search, filter, paginate) | No |
+| GET | `/analytics` | Aggregated blog analytics | No |
+| GET | `/:id` | Get single post by ID | No |
+| POST | `/` | Create post (supports cover image upload) | Yes |
+| PUT | `/:id` | Update post (owner only) | Yes |
+| DELETE | `/:id` | Delete post (owner only) | Yes |
+| PUT | `/:id/like` | Toggle like/unlike on a post | Yes |
+
+**Query parameters for `GET /`:**
+- `search` — keyword search across title and content (regex)
+- `tag` — filter by tag
+- `page` — page number (default: 1)
+- `limit` — results per page (default: 10)
+
+### Comments — `/api/comments`
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/:postId` | Add comment to a post | Yes |
+| GET | `/:postId` | Get all comments for a post | No |
+| PUT | `/:id` | Update comment (owner only) | Yes |
+| DELETE | `/:id` | Delete comment (owner only) | Yes |
+
+### Other
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/api-docs` | Swagger UI documentation |
+
+---
+
+## Request Flow
+
+```
+Client Request
+  → CORS (cross-origin filtering)
+  → Helmet (security headers)
+  → Rate Limiter (100 req / 15 min per IP)
+  → Router
+    → Auth Middleware (JWT verification, if protected route)
+    → Multer (file upload parsing, if multipart)
+    → express-validator (input validation)
+    → validate middleware (check for errors, return 400 if any)
+    → Controller (business logic)
+    → MongoDB (data operation)
+  → Response
+  → Global Error Handler (catches anything unhandled, returns consistent JSON)
+```
+
+---
+
+## Project Structure
 
 ```
 BlogPulse/
-├── index.js                    # Application entry point
+├── index.js                          # Entry point, middleware chain, route mounting
 ├── package.json
-├── .env                        # Environment variables (not committed)
-├── .gitignore
+├── .env                              # Environment variables (not committed)
+├── tests/
+│   └── app.test.js                   # Integration tests (Jest + Supertest)
 └── src/
     ├── config/
-    │   └── db.config.js        # MongoDB connection setup
+    │   └── db.config.js              # MongoDB connection
     ├── controllers/
-    │   ├── user.controller.js  # User auth & profile logic
-    │   ├── post.controller.js  # Blog post CRUD logic
-    │   └── comment.controller.js # Comment CRUD logic
+    │   ├── user.controller.js        # Auth (register/login) + profile CRUD
+    │   ├── post.controller.js        # Post CRUD + likes + analytics pipeline
+    │   └── comment.controller.js     # Comment CRUD with ownership checks
     ├── middleware/
-    │   ├── auth.middleware.js   # JWT verification & route protection
-    │   └── validate.middleware.js # Request validation handler
+    │   ├── auth.middleware.js         # JWT verification + req.user injection
+    │   ├── validate.middleware.js     # express-validator error aggregation
+    │   ├── error.middleware.js        # Global 4-param error handler
+    │   └── upload.middleware.js       # Multer + Cloudinary storage config
     ├── models/
-    │   ├── user.model.js       # User schema (name, email, password)
-    │   ├── post.model.js       # Post schema (title, content, author)
-    │   └── comment.model.js    # Comment schema (text, post, user)
-    ├── routes/
-    │   ├── user.routes.js      # /api/users endpoints
-    │   ├── post.routes.js      # /api/posts endpoints
-    │   └── comment.routes.js   # /api/comments endpoints
-    └── utils/                  # Utility functions
+    │   ├── user.model.js             # name, email, password (hashed)
+    │   ├── post.model.js             # title, content, tags, coverImage, likes[]
+    │   └── comment.model.js          # text, post (ref), user (ref)
+    └── routes/
+        ├── user.routes.js            # /api/users — with Swagger annotations
+        ├── post.routes.js            # /api/posts — with Swagger annotations
+        └── comment.routes.js         # /api/comments — with Swagger annotations
 ```
 
 ---
 
-## ⚙️ Getting Started
+## Getting Started
 
 ### Prerequisites
 - Node.js v18+
-- MongoDB (local or Atlas)
+- MongoDB (local or [Atlas](https://www.mongodb.com/atlas))
+- Cloudinary account (for image uploads)
 
 ### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/shuklashivam33221/BlogPulse.git
 cd BlogPulse
-
-# Install dependencies
 npm install
-
-# Create environment file
-cp .env.example .env
-# Edit .env with your MongoDB URI and JWT secret
 ```
 
 ### Environment Variables
+
+Create a `.env` file in the root:
 
 ```env
 PORT=5000
 MONGO_URI=mongodb://localhost:27017/blogpulse
 JWT_SECRET=your_jwt_secret_key
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
 ```
 
-### Run the Server
+### Run
 
 ```bash
 # Development (with hot reload)
 npm run dev
 
+# Run tests
+npm test
+```
+
+### Test the API
+
+Visit [localhost:5000/api-docs](http://localhost:5000/api-docs) for the interactive Swagger documentation, or use curl:
+
+```bash
 # Health check
 curl http://localhost:5000/health
+
+# Register
+curl -X POST http://localhost:5000/api/users/register \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Test", "email": "test@test.com", "password": "password123"}'
 ```
 
 ---
 
-## 📡 API Endpoints
+## Author
 
-### Users
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| POST | `/api/users/register` | Register new user | ❌ |
-| POST | `/api/users/login` | Login & get JWT | ❌ |
-| GET | `/api/users/profile` | Get user profile | ✅ |
-| PUT | `/api/users/profile` | Update profile | ✅ |
-| DELETE | `/api/users/profile` | Delete account | ✅ |
+**Shivam Shukla** — [GitHub](https://github.com/shuklashivam33221) · [LinkedIn](https://www.linkedin.com/in/shivamshukla33221/)
 
-### Posts
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| POST | `/api/posts` | Create a post | ✅ |
-| GET | `/api/posts` | Get all posts | ❌ |
-| GET | `/api/posts/:id` | Get post by ID | ❌ |
-| PUT | `/api/posts/:id` | Update post | ✅ |
-| DELETE | `/api/posts/:id` | Delete post | ✅ |
+## License
 
-### Comments
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| POST | `/api/comments/:postId` | Add comment to post | ✅ |
-| GET | `/api/comments/:postId` | Get comments for post | ❌ |
-| PUT | `/api/comments/:id` | Update comment | ✅ |
-| DELETE | `/api/comments/:id` | Delete comment | ✅ |
-
----
-
-## 🔒 Authentication Flow
-
-1. User registers with name, email, and password
-2. Password is hashed using **bcryptjs** before storing
-3. On login, server validates credentials and returns a **JWT**
-4. Client sends JWT in `Authorization: Bearer <token>` header
-5. Protected routes verify the token via **auth middleware**
-
----
-
-## 👤 Author
-
-**Shivam Shukla**
-
----
-
-## 📄 License
-
-This project is licensed under the ISC License.
+ISC

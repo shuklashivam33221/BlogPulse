@@ -37,8 +37,7 @@ const limiter = rateLimit({
     message: { message: "Too many requests from this IP, please try again after 15 minutes" }
 });
 // Apply rate limiter to all routes
-// TEMPORARILY DISABLED FOR LOAD TESTING
-// app.use("/api", limiter);
+app.use("/api", limiter);
 
 // ==================== SWAGGER DOCUMENTATION SETUP ====================
 const swaggerOptions = {
@@ -51,8 +50,10 @@ const swaggerOptions = {
         },
         servers: [
             {
-                url: `http://localhost:${process.env.PORT || 5000}`,
-                description: 'Development Server'
+                url: process.env.NODE_ENV === 'production'
+                    ? 'https://blogpulse-4jc9.onrender.com'
+                    : `http://localhost:${process.env.PORT || 5000}`,
+                description: process.env.NODE_ENV === 'production' ? 'Production Server' : 'Development Server'
             }
         ],
         components: {
